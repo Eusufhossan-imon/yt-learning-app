@@ -1,0 +1,229 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sequential YouTube Course App</title>
+  <style>
+    * { box-sizing: border-box; font-family: Arial, sans-serif; }
+    body { margin: 0; background: #121212; color: #f5f5f5; padding: 20px; }
+    .container { max-width: 1000px; margin: 0 auto; display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+    @media (max-width: 800px) { .container { grid-template-columns: 1fr; } }
+    .player-box { background: #1e1e1e; padding: 16px; border-radius: 10px; }
+    .video-wrapper { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 8px; background: #000; }
+    .video-wrapper iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+    .status-bar { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: #bbb; }
+    .playlist { background: #1e1e1e; padding: 16px; border-radius: 10px; }
+    .playlist h3 { margin-top: 0; }
+    .lesson-btn {
+      width: 100%; text-align: left; padding: 12px; margin-bottom: 10px;
+      border: 1px solid #333; border-radius: 8px; background: #282828;
+      color: #fff; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+    }
+    .lesson-btn.active { border-color: #3ea6ff; background: #1f3347; }
+    .lesson-btn.completed { border-color: #2e7d32; }
+    .lesson-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .badge { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: #3a3a3a; }
+    .badge.done { background: #2e7d32; }
+    .badge.open { background: #1565c0; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="player-box">
+    <h2 id="currentTitle">Loading...</h2>
+    <div class="video-wrapper">
+      <div id="player"></div>
+    </div>
+    <div class="status-bar">
+      <span id="progressText">Progress: 0%</span>
+      <span id="resumeNote"></span>
+    </div>
+  </div>
+
+  <div class="playlist">
+    <h3>Lessons</h3>
+    <div id="lessonList"></div>
+  </div>
+</div>
+
+<script>
+  // আপনার ইউটিউব ভিডিওগুলোর ID এবং টাইটেল এখানে দিন
+  const VIDEOS = [
+    { id: "dQw4w9WgXcQ", title: "Lesson 1: Introduction" },
+    { id: "jNQXAC9IVRw", title: "Lesson 2: Core Concepts" },
+    { id: "aqz-KE-bpKQ", title: "Lesson 3: Practical Walkthrough" }
+  ];
+
+  const STORAGE_KEY = "yt_sequential_progress_v1";
+
+  function loadState() {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    if (saved) return saved;
+    return {
+      currentIndex: 0,
+      unlockedIndex: 0,
+      videos: VIDEOS.map(() => ({ position: 0, maxWatched: 0, completed: false }))
+    };
+  }
+
+  let state = loadState();
+  let player = null;
+  let trackerInterval = null;
+
+  function saveState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function renderPlaylist() {
+    const listEl = document.getElementById("lessonList");
+    listEl.innerHTML = "";
+
+    VIDEOS.forEach((vid, idx) => {
+      const vState = state.videos[idx];
+      const isUnlocked = idx <= state.unlockedIndex;
+      const btn = document.createElement("button");
+      btn.className = "lesson-btn" +
+        (idx === state.currentIndex ? " active" : "") +
+        (vState.completed ? " completed" : "");
+      btn.disabled = !isUnlocked;
+
+      let badgeText = "Locked";
+      let badgeClass = "badge";
+      if (vState.completed) {
+        badgeText = "Completed";
+        badgeClass += " done";
+      } else if (isUnlocked) {
+        badgeText = "Unlocked";
+        badgeClass += " open";
+      }
+
+      btn.innerHTML = `<span>${idx + 1}. ${vid.title}</span><span class="${badgeClass}">${badgeText}</span>`;
+      btn.onclick = () => selectVideo(idx);
+      listEl.appendChild(btn);
+    });
+  }
+
+  function updateUI(duration = 0) {
+    const idx = state.currentIndex;
+    const vState = state.videos[idx];
+    document.getElementById("currentTitle").textContent = VIDEOS[idx].title;
+
+    const pct = duration > 0 ? Math.min(100, Math.round((vState.maxWatched / duration) * 100)) : (vState.completed ? 100 : 0);
+    document.getElementById("progressText").textContent = `Watched: ${pct}%`;
+    document.getElementById("resumeNote").textContent =
+      vState.position > 0 && !vState.completed ? `Resuming around ${Math.floor(vState.position)}s` : "";
+  }
+
+  function unlockNextIfNeeded(idx) {
+    state.videos[idx].completed = true;
+    if (idx + 1 < VIDEOS.length && state.unlockedIndex < idx + 1) {
+      state.unlockedIndex = idx + 1;
+    }
+    saveState();
+    renderPlaylist();
+  }
+
+  function startTracking() {
+    clearInterval(trackerInterval);
+    trackerInterval = setInterval(() => {
+      if (!player || typeof player.getCurrentTime !== "function") return;
+      const currentTime = player.getCurrentTime();
+      const duration = player.getDuration();
+      if (!duration || duration <= 0) return;
+
+      const idx = state.currentIndex;
+      const vState = state.videos[idx];
+
+      // সামনে টেনে (forward seek) চিটিং ঠেকানো
+      if (!vState.completed && currentTime > vState.maxWatched + 3) {
+        player.seekTo(vState.maxWatched, true);
+        return;
+      }
+
+      if (currentTime > vState.maxWatched) {
+        vState.maxWatched = currentTime;
+      }
+
+      // শেষের দিকে গেলে বা ৯৫% পূর্ণ হলে পরবর্তী ভিডিও আনলক
+      if (currentTime >= duration * 0.95) {
+        unlockNextIfNeeded(idx);
+      }
+
+      // বর্তমান পজিশন সেভ করা (শেষ হয়ে গেলে ০ থেকে শুরু হবে)
+      vState.position = currentTime >= duration - 2 ? 0 : currentTime;
+      saveState();
+      updateUI(duration);
+    }, 1500);
+  }
+
+  function loadPlayer(idx) {
+    const vid = VIDEOS[idx];
+    const vState = state.videos[idx];
+    const startSec = vState.completed ? 0 : Math.floor(vState.position || 0);
+
+    updateUI(0);
+    renderPlaylist();
+
+    if (player && typeof player.loadVideoById === "function") {
+      player.loadVideoById({ videoId: vid.id, startSeconds: startSec });
+      return;
+    }
+
+    player = new YT.Player("player", {
+      videoId: vid.id,
+      playerVars: {
+        start: startSec,
+        rel: 0,
+        modestbranding: 1
+      },
+      events: {
+        onReady: () => {
+          updateUI(player.getDuration());
+          startTracking();
+        },
+        onStateChange: (event) => {
+          if (event.data === YT.PlayerState.ENDED) {
+            unlockNextIfNeeded(state.currentIndex);
+            state.videos[state.currentIndex].position = 0;
+            saveState();
+          }
+        }
+      }
+    });
+  }
+
+  function selectVideo(idx) {
+    if (idx > state.unlockedIndex) return;
+    if (player && typeof player.getCurrentTime === "function") {
+      state.videos[state.currentIndex].position = player.getCurrentTime();
+      saveState();
+    }
+    state.currentIndex = idx;
+    saveState();
+    loadPlayer(idx);
+  }
+
+  // ট্যাব/ব্রাউজার বন্ধ বা লুকানোর আগে সর্বশেষ সেকেন্ড সেভ করা
+  window.addEventListener("beforeunload", () => {
+    if (player && typeof player.getCurrentTime === "function") {
+      const t = player.getCurrentTime();
+      const d = player.getDuration();
+      state.videos[state.currentIndex].position = (d && t >= d - 2) ? 0 : t;
+      saveState();
+    }
+  });
+
+  // YouTube IFrame API লোড করা
+  const tag = document.createElement("script");
+  tag.src = "https://www.youtube.com/iframe_api";
+  document.head.appendChild(tag);
+
+  window.onYouTubeIframeAPIReady = () => {
+    loadPlayer(state.currentIndex);
+  };
+</script>
+
+</body>
+</html>
