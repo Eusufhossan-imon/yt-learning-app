@@ -7,33 +7,42 @@
   <style>
     * { box-sizing: border-box; font-family: Arial, sans-serif; }
     body { margin: 0; background: #121212; color: #f5f5f5; padding: 20px; }
-    .container { max-width: 1100px; margin: 0 auto; display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+    .container { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
     @media (max-width: 850px) { .container { grid-template-columns: 1fr; } }
     .card { background: #1e1e1e; padding: 16px; border-radius: 10px; }
     .video-wrapper { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 8px; background: #000; }
     .video-wrapper iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
     .status-bar { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: #bbb; flex-wrap: wrap; gap: 8px; }
     .wake-pill { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: #263238; color: #80cbc4; }
+    .cat-pill { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: #2b3a4a; color: #90caf9; font-weight: bold; }
     .warning-msg { color: #ff8a80; font-size: 13px; min-height: 18px; margin-top: 6px; }
+    .filter-bar { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+    .filter-btn {
+      padding: 6px 10px; border-radius: 6px; border: 1px solid #3a3a3a;
+      background: #282828; color: #ddd; cursor: pointer; font-size: 12px;
+    }
+    .filter-btn.active { background: #1565c0; border-color: #3ea6ff; color: #fff; font-weight: bold; }
     .lesson-item { display: flex; gap: 6px; margin-bottom: 10px; }
     .lesson-btn {
       flex: 1; text-align: left; padding: 12px; border: 1px solid #333; border-radius: 8px;
-      background: #282828; color: #fff; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+      background: #282828; color: #fff; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 8px;
     }
     .lesson-btn.active { border-color: #3ea6ff; background: #1f3347; }
     .lesson-btn.completed { border-color: #2e7d32; }
     .lesson-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .lesson-meta { display: flex; flex-direction: column; gap: 4px; }
+    .lesson-cat { font-size: 11px; color: #90caf9; }
     .del-btn {
       background: #3a2020; border: 1px solid #5c2b2b; color: #ff8a80; border-radius: 8px;
       padding: 0 10px; cursor: pointer; font-weight: bold;
     }
     .del-btn:hover { background: #b71c1c; color: #fff; }
-    .badge { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: #3a3a3a; white-space: nowrap; margin-left: 8px; }
+    .badge { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: #3a3a3a; white-space: nowrap; }
     .badge.done { background: #2e7d32; }
     .badge.open { background: #1565c0; }
     .add-box { margin-top: 20px; padding-top: 15px; border-top: 1px solid #333; }
     .add-box h4 { margin: 0 0 10px 0; font-size: 15px; }
-    .add-box input {
+    .add-box input, .add-box select {
       width: 100%; padding: 10px; margin-bottom: 8px; border-radius: 6px;
       border: 1px solid #444; background: #121212; color: #fff; font-size: 13px;
     }
@@ -52,7 +61,10 @@
 
 <div class="container">
   <div class="card">
-    <h2 id="currentTitle" style="margin-top:0;">Loading...</h2>
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+      <h2 id="currentTitle" style="margin:0;">Loading...</h2>
+      <span id="currentCategoryBadge" class="cat-pill">Category</span>
+    </div>
     <div class="video-wrapper">
       <div id="player"></div>
     </div>
@@ -66,11 +78,22 @@
 
   <div class="card">
     <h3 style="margin-top:0;">Lessons</h3>
+
+    <div class="filter-bar">
+      <button class="filter-btn active" data-cat="All" onclick="setCategoryFilter('All')">All</button>
+      <button class="filter-btn" data-cat="Career Growth" onclick="setCategoryFilter('Career Growth')">Career Growth</button>
+      <button class="filter-btn" data-cat="Relationship" onclick="setCategoryFilter('Relationship')">Relationship</button>
+    </div>
+
     <div id="lessonList"></div>
 
     <div class="add-box">
       <h4>+ Add YouTube Video</h4>
-      <input type="text" id="videoTitleInput" placeholder="Lesson Title (e.g. Lesson 4: New Topic)" />
+      <select id="videoCategoryInput">
+        <option value="Career Growth">Career Growth</option>
+        <option value="Relationship">Relationship</option>
+      </select>
+      <input type="text" id="videoTitleInput" placeholder="Lesson Title (e.g. Deep Work Summary)" />
       <input type="text" id="videoUrlInput" placeholder="Paste YouTube Link or Video ID" />
       <button class="add-btn" onclick="addNewVideo()">Add Video</button>
       <button class="reset-btn" onclick="resetProgress()">Reset Watch Progress</button>
@@ -79,16 +102,25 @@
 </div>
 
 <script>
+  const CATEGORIES = ["Career Growth", "Relationship"];
+
   const DEFAULT_VIDEOS = [
-    { id: "jNQXAC9IVRw", title: "Lesson 1: Introduction" },
-    { id: "aqz-KE-bpKQ", title: "Lesson 2: Core Concepts" }
+    { id: "jNQXAC9IVRw", title: "Lesson 1: Career Roadmap & Focus", category: "Career Growth" },
+    { id: "aqz-KE-bpKQ", title: "Lesson 2: Communication & Boundaries", category: "Relationship" }
   ];
 
-  const STORAGE_KEY = "yt_sequential_app_v4";
+  const STORAGE_KEY = "yt_sequential_app_v5";
 
   function loadState() {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
-    if (saved && Array.isArray(saved.videos) && saved.videos.length > 0) return saved;
+    if (saved && Array.isArray(saved.videos) && saved.videos.length > 0) {
+      saved.videos.forEach((v, i) => {
+        if (!CATEGORIES.includes(v.category)) {
+          v.category = i % 2 === 0 ? "Career Growth" : "Relationship";
+        }
+      });
+      return saved;
+    }
     return {
       currentIndex: 0,
       unlockedIndex: 0,
@@ -97,6 +129,7 @@
   }
 
   let state = loadState();
+  let activeFilter = "All";
   let player = null;
   let trackerInterval = null;
   let lastTickTime = 0;
@@ -105,6 +138,14 @@
 
   function saveState() {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function setCategoryFilter(cat) {
+    activeFilter = cat;
+    document.querySelectorAll(".filter-btn").forEach(btn => {
+      btn.classList.toggle("active", btn.dataset.cat === cat);
+    });
+    renderPlaylist();
   }
 
   function updateWakeBadge(text, active = false) {
@@ -160,6 +201,7 @@
   }
 
   function addNewVideo() {
+    const catInput = document.getElementById("videoCategoryInput");
     const titleInput = document.getElementById("videoTitleInput");
     const urlInput = document.getElementById("videoUrlInput");
     const videoId = extractVideoId(urlInput.value);
@@ -169,10 +211,13 @@
       return;
     }
 
-    const title = titleInput.value.trim() || `Lesson ${state.videos.length + 1}`;
+    const category = CATEGORIES.includes(catInput.value) ? catInput.value : "Career Growth";
+    const title = titleInput.value.trim() || `${category} Lesson ${state.videos.length + 1}`;
+
     state.videos.push({
       id: videoId,
       title: title,
+      category: category,
       position: 0,
       maxWatched: 0,
       completed: false
@@ -218,7 +263,16 @@
     const listEl = document.getElementById("lessonList");
     listEl.innerHTML = "";
 
-    state.videos.forEach((vid, idx) => {
+    const visibleItems = state.videos
+      .map((vid, idx) => ({ vid, idx }))
+      .filter(({ vid }) => activeFilter === "All" || vid.category === activeFilter);
+
+    if (visibleItems.length === 0) {
+      listEl.innerHTML = `<p style="color:#999; font-size:13px;">এই ক্যাটাগরিতে কোনো ভিডিও নেই।</p>`;
+      return;
+    }
+
+    visibleItems.forEach(({ vid, idx }) => {
       const isUnlocked = idx <= state.unlockedIndex;
       const row = document.createElement("div");
       row.className = "lesson-item";
@@ -239,7 +293,13 @@
         badgeClass += " open";
       }
 
-      btn.innerHTML = `<span>${idx + 1}. ${vid.title}</span><span class="${badgeClass}">${badgeText}</span>`;
+      btn.innerHTML = `
+        <div class="lesson-meta">
+          <span>${idx + 1}. ${vid.title}</span>
+          <span class="lesson-cat">${vid.category}</span>
+        </div>
+        <span class="${badgeClass}">${badgeText}</span>
+      `;
       btn.onclick = () => selectVideo(idx);
 
       const delBtn = document.createElement("button");
@@ -258,6 +318,7 @@
     const idx = state.currentIndex;
     const vid = state.videos[idx];
     document.getElementById("currentTitle").textContent = vid.title;
+    document.getElementById("currentCategoryBadge").textContent = vid.category;
 
     const pct = duration > 0 ? Math.min(100, Math.round((vid.maxWatched / duration) * 100)) : (vid.completed ? 100 : 0);
     document.getElementById("progressText").textContent = `Watched: ${pct}%`;
