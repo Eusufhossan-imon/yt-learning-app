@@ -1,1 +1,150 @@
-....
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sequential YouTube Course App</title>
+  <style>
+    * { box-sizing: border-box; font-family: Arial, sans-serif; }
+    body { margin: 0; background: #121212; color: #f5f5f5; padding: 20px; }
+    .container { max-width: 1120px; margin: 0 auto; display: grid; grid-template-columns: 2fr 1fr; gap: 20px; }
+    @media (max-width: 850px) { .container { grid-template-columns: 1fr; } }
+    .card { background: #1e1e1e; padding: 16px; border-radius: 10px; }
+    .video-wrapper { position: relative; padding-bottom: 56.25%; height: 0; overflow: hidden; border-radius: 8px; background: #000; }
+    .video-wrapper iframe { position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: 0; }
+    .status-bar { margin-top: 12px; display: flex; justify-content: space-between; align-items: center; font-size: 14px; color: #bbb; flex-wrap: wrap; gap: 8px; }
+    .wake-pill { font-size: 12px; padding: 3px 8px; border-radius: 999px; background: #263238; color: #80cbc4; }
+    .cat-pill { font-size: 12px; padding: 3px 9px; border-radius: 999px; background: #2b3a4a; color: #90caf9; font-weight: bold; }
+    .warning-msg { color: #ff8a80; font-size: 13px; min-height: 18px; margin-top: 6px; }
+    .filter-bar { display: flex; gap: 6px; margin-bottom: 12px; flex-wrap: wrap; }
+    .filter-btn {
+      padding: 6px 10px; border-radius: 6px; border: 1px solid #3a3a3a;
+      background: #282828; color: #ddd; cursor: pointer; font-size: 12px;
+    }
+    .filter-btn.active { background: #1565c0; border-color: #3ea6ff; color: #fff; font-weight: bold; }
+    .lesson-item { display: flex; gap: 6px; margin-bottom: 10px; }
+    .lesson-btn {
+      flex: 1; text-align: left; padding: 12px; border: 1px solid #333; border-radius: 8px;
+      background: #282828; color: #fff; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+    }
+    .lesson-btn.active { border-color: #3ea6ff; background: #1f3347; }
+    .lesson-btn.completed { border-color: #2e7d32; }
+    .lesson-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+    .lesson-meta { display: flex; flex-direction: column; gap: 4px; }
+    .lesson-cat { font-size: 11px; color: #90caf9; }
+    .del-btn {
+      background: #3a2020; border: 1px solid #5c2b2b; color: #ff8a80; border-radius: 8px;
+      padding: 0 10px; cursor: pointer; font-weight: bold;
+    }
+    .del-btn:hover { background: #b71c1c; color: #fff; }
+    .badge { font-size: 11px; padding: 3px 8px; border-radius: 999px; background: #3a3a3a; white-space: nowrap; }
+    .badge.done { background: #2e7d32; }
+    .badge.open { background: #1565c0; }
+    .add-box { margin-top: 20px; padding-top: 15px; border-top: 1px solid #333; }
+    .add-box h4 { margin: 0 0 10px 0; font-size: 15px; }
+    .add-box input, .add-box select {
+      width: 100%; padding: 10px; margin-bottom: 8px; border-radius: 6px;
+      border: 1px solid #444; background: #121212; color: #fff; font-size: 13px;
+    }
+    .add-btn {
+      width: 100%; padding: 10px; border: none; border-radius: 6px;
+      background: #2e7d32; color: #fff; font-weight: bold; cursor: pointer;
+    }
+    .add-btn:hover { background: #388e3c; }
+    .sync-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; margin-top: 8px; }
+    .secondary-btn {
+      width: 100%; padding: 8px; border: 1px solid #444; border-radius: 6px;
+      background: #252525; color: #ccc; cursor: pointer; font-size: 12px;
+    }
+    .secondary-btn:hover { background: #333; color: #fff; }
+  </style>
+</head>
+<body>
+
+<div class="container">
+  <div class="card">
+    <div style="display:flex; justify-content:space-between; align-items:center; gap:10px; margin-bottom:10px; flex-wrap:wrap;">
+      <h2 id="currentTitle" style="margin:0;">Loading...</h2>
+      <span id="currentCategoryBadge" class="cat-pill">Category</span>
+    </div>
+    <div class="video-wrapper">
+      <div id="player"></div>
+    </div>
+    <div class="status-bar">
+      <span id="progressText">Watched: 0%</span>
+      <span id="resumeNote"></span>
+      <span id="wakeStatus" class="wake-pill">Screen Lock: Idle</span>
+    </div>
+    <div id="warningMsg" class="warning-msg"></div>
+  </div>
+
+  <div class="card">
+    <h3 style="margin-top:0;">Lessons</h3>
+
+    <div class="filter-bar">
+      <button class="filter-btn active" data-cat="All" onclick="setCategoryFilter('All')">All</button>
+      <button class="filter-btn" data-cat="Career Growth" onclick="setCategoryFilter('Career Growth')">Career Growth</button>
+      <button class="filter-btn" data-cat="Relationship" onclick="setCategoryFilter('Relationship')">Relationship</button>
+    </div>
+
+    <div id="lessonList"></div>
+
+    <div class="add-box">
+      <h4>+ Add YouTube Video</h4>
+      <select id="videoCategoryInput">
+        <option value="Career Growth">Career Growth</option>
+        <option value="Relationship">Relationship</option>
+      </select>
+      <input type="text" id="videoTitleInput" placeholder="Lesson Title (e.g. Deep Work Summary)" />
+      <input type="text" id="videoUrlInput" placeholder="Paste YouTube Link or Video ID" />
+      <button class="add-btn" onclick="addNewVideo()">Add Video</button>
+
+      <div class="sync-row">
+        <button class="secondary-btn" onclick="copyListForGitHub()">Copy List for GitHub</button>
+        <button class="secondary-btn" onclick="importBackup()">Import Backup</button>
+      </div>
+      <button class="secondary-btn" style="margin-top:6px;" onclick="resetProgress()">Reset Watch Progress</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  const CATEGORIES = ["Career Growth", "Relationship"];
+
+  const DEFAULT_VIDEOS = [
+    { id: "PAKVaYHCaDQ", title: "Relationship Lesson 1", category: "Relationship" },
+    { id: "-OAp0KW23IU", title: "Relationship Lesson 2", category: "Relationship" }
+  ];
+
+  const STORAGE_KEY = "yt_sequential_app_v7";
+
+  function loadState() {
+    const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+    if (saved && Array.isArray(saved.videos) && saved.videos.length > 0) {
+      const existingIds = new Set(saved.videos.map(v => v.id));
+      DEFAULT_VIDEOS.forEach(def => {
+        if (!existingIds.has(def.id)) {
+          saved.videos.push({ ...def, position: 0, maxWatched: 0, completed: false });
+        }
+      });
+      saved.videos.forEach((v, i) => {
+        if (!CATEGORIES.includes(v.category)) {
+          v.category = i % 2 === 0 ? "Career Growth" : "Relationship";
+        }
+      });
+      return saved;
+    }
+    return {
+      currentIndex: 0,
+      unlockedIndex: 0,
+      videos: DEFAULT_VIDEOS.map(v => ({ ...v, position: 0, maxWatched: 0, completed: false }))
+    };
+  }
+
+  let state = loadState();
+  let activeFilter = "All";
+  let player = null;
+  let trackerInterval = null;
+  let lastTickTime = 0;
+  let pendingSeekSec = null;
+  let wakeLockSentinel = null;
